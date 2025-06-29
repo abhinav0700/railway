@@ -51,6 +51,3 @@ This is a scalable Train Search Web Application that allows users to:
   - Chained connections
   - Edge cases (no route available)
 
-> 📝 To run the test data script:
-```bash
-node scripts/generateTrains.js
