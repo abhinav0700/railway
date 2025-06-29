@@ -1,4 +1,5 @@
 import { neon } from "@neondatabase/serverless"
+import type { PriceBreakdown } from "./pricing-engine"
 
 // Neon database configuration with multiple fallback options
 const DATABASE_URL =
@@ -42,7 +43,7 @@ export const DB_CONFIG = {
   retryDelay: 1000,
 
   // Application settings - ensure this is a number
-  pricePerKm: Number(process.env.PRICE_PER_KM) || 1.25, // ₹1.25 per km
+  pricePerKm: Number(process.env.PRICE_PER_KM) || 1.25, // ₹1.25 per km (fallback only)
   maxConnectingRoutes: 5,
   searchTimeout: 10000,
 
@@ -85,6 +86,7 @@ export interface Train {
   id: number
   name: string
   train_number: string
+  train_type: string
 }
 
 export interface TrainRoute {
@@ -99,17 +101,29 @@ export interface TrainRoute {
 export interface TrainSearchResult {
   train_name: string
   train_number: string
+  train_type: string
   departure_time: string
   arrival_time: string
   distance: number
   price: number
   route_type: "direct" | "connecting"
+  travel_date: string
+  pricing_breakdown?: PriceBreakdown
+  available_classes?: Array<{
+    class: string
+    name: string
+    totalPrice: number
+    savings?: number
+    originalPrice?: number
+  }>
   connecting_train?: {
     train_name: string
     train_number: string
+    train_type: string
     departure_time: string
     arrival_time: string
     distance: number
     price: number
+    pricing_breakdown?: PriceBreakdown
   }
 }

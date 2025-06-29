@@ -7,7 +7,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { EmptyState } from "@/components/ui/empty-state"
-import { ArrowRight, MapPin, Clock, IndianRupee, Route, RefreshCw, ArrowUpDown, AlertTriangle } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import {
+  MapPin,
+  Clock,
+  IndianRupee,
+  Route,
+  RefreshCw,
+  ArrowUpDown,
+  AlertTriangle,
+  Calendar,
+  Star,
+  Zap,
+} from "lucide-react"
 import type { Station, TrainSearchResult } from "@/lib/database"
 
 interface StationsResponse {
@@ -27,6 +39,7 @@ interface TrainsResponse {
     message?: string
     sourceId?: number
     destinationId?: number
+    travelDate?: string
   }
 }
 
@@ -34,16 +47,21 @@ export default function TrainSearch() {
   const [stations, setStations] = useState<Station[]>([])
   const [sourceStation, setSourceStation] = useState<string>("")
   const [destinationStation, setDestinationStation] = useState<string>("")
+  const [travelDate, setTravelDate] = useState<string>("")
   const [trains, setTrains] = useState<TrainSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [stationsLoading, setStationsLoading] = useState(true)
-  const [sortBy, setSortBy] = useState<"price" | "time">("price")
+  const [sortBy, setSortBy] = useState<"price" | "time" | "duration">("price")
   const [error, setError] = useState<string>("")
   const [isMockData, setIsMockData] = useState(false)
   const [mockMessage, setMockMessage] = useState<string>("")
 
   useEffect(() => {
     fetchStations()
+    // Set default travel date to tomorrow
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    setTravelDate(tomorrow.toISOString().split("T")[0])
   }, [])
 
   const fetchStations = async () => {
@@ -60,7 +78,6 @@ export default function TrainSearch() {
           setMockMessage(data.meta.message)
         }
       } else {
-        // Fallback for old API format
         setStations(data as any)
       }
       setError("")
@@ -73,9 +90,8 @@ export default function TrainSearch() {
   }
 
   const searchTrains = async () => {
-    if (!sourceStation || !destinationStation) return
+    if (!sourceStation || !destinationStation || !travelDate) return
 
-    // Validate station IDs before making the request
     const sourceId = Number.parseInt(sourceStation, 10)
     const destinationId = Number.parseInt(destinationStation, 10)
 
@@ -94,9 +110,11 @@ export default function TrainSearch() {
     setTrains([])
 
     try {
-      console.log(`Searching trains from ${sourceId} to ${destinationId}`)
+      console.log(`Searching trains from ${sourceId} to ${destinationId} for ${travelDate}`)
 
-      const response = await fetch(`/api/search-trains?source=${sourceId}&destination=${destinationId}`)
+      const response = await fetch(
+        `/api/search-trains?source=${sourceId}&destination=${destinationId}&date=${travelDate}`,
+      )
       const data: TrainsResponse = await response.json()
 
       if (response.ok) {
@@ -105,10 +123,9 @@ export default function TrainSearch() {
           if (data.meta.message && data.meta.mock) {
             setError(data.meta.message)
           } else if (data.data.length === 0) {
-            setError("No trains found for the selected route. Try a different route or check back later.")
+            setError("No trains found for the selected route and date. Try a different route or date.")
           }
         } else {
-          // Fallback for old API format
           setTrains(data as any)
         }
       } else {
@@ -136,10 +153,29 @@ export default function TrainSearch() {
       const priceA = a.price + (a.connecting_train?.price || 0)
       const priceB = b.price + (b.connecting_train?.price || 0)
       return priceA - priceB
-    } else {
+    } else if (sortBy === "time") {
       return a.departure_time.localeCompare(b.departure_time)
+    } else {
+      // Sort by duration (arrival - departure)
+      const durationA = calculateDuration(a.departure_time, a.arrival_time)
+      const durationB = calculateDuration(b.departure_time, b.arrival_time)
+      return durationA - durationB
     }
   })
+
+  const calculateDuration = (departure: string, arrival: string): number => {
+    const dep = new Date(`2000-01-01T${departure}`)
+    const arr = new Date(`2000-01-01T${arrival}`)
+    if (arr < dep) arr.setDate(arr.getDate() + 1) // Next day arrival
+    return arr.getTime() - dep.getTime()
+  }
+
+  const formatDuration = (departure: string, arrival: string): string => {
+    const duration = calculateDuration(departure, arrival)
+    const hours = Math.floor(duration / (1000 * 60 * 60))
+    const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60))
+    return `${hours}h ${minutes}m`
+  }
 
   const formatTime = (time: string) => {
     try {
@@ -149,7 +185,7 @@ export default function TrainSearch() {
         hour12: true,
       })
     } catch (error) {
-      return time // Return original time if formatting fails
+      return time
     }
   }
 
@@ -167,6 +203,23 @@ export default function TrainSearch() {
 
   const getDestinationStationName = () => {
     return stations.find((s) => s.id.toString() === destinationStation)?.name || ""
+  }
+
+  const getTrainTypeIcon = (trainType?: string) => {
+    if (!trainType) return <Route className="h-4 w-4 text-gray-500" />
+    if (trainType.includes("Rajdhani") || trainType.includes("Shatabdi"))
+      return <Star className="h-4 w-4 text-yellow-500" />
+    if (trainType.includes("Express")) return <Zap className="h-4 w-4 text-blue-500" />
+    return <Route className="h-4 w-4 text-gray-500" />
+  }
+
+  const getTrainTypeColor = (trainType?: string) => {
+    if (!trainType) return "bg-gray-100 text-gray-800"
+    if (trainType.includes("Rajdhani")) return "bg-yellow-100 text-yellow-800"
+    if (trainType.includes("Shatabdi")) return "bg-purple-100 text-purple-800"
+    if (trainType.includes("Express")) return "bg-blue-100 text-blue-800"
+    if (trainType.includes("Mail")) return "bg-green-100 text-green-800"
+    return "bg-gray-100 text-gray-800"
   }
 
   if (stationsLoading) {
@@ -223,7 +276,7 @@ export default function TrainSearch() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-end">
+          <div className="grid grid-cols-1 lg:grid-cols-6 gap-6 items-end">
             <div className="lg:col-span-2 space-y-2">
               <label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">From</label>
               <Select value={sourceStation} onValueChange={setSourceStation}>
@@ -278,9 +331,24 @@ export default function TrainSearch() {
               </Select>
             </div>
 
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Date</label>
+              <div className="relative">
+                <Input
+                  type="date"
+                  value={travelDate}
+                  onChange={(e) => setTravelDate(e.target.value)}
+                  min={new Date().toISOString().split("T")[0]}
+                  max={new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
+                  className="h-12 text-base pl-10"
+                />
+                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              </div>
+            </div>
+
             <Button
               onClick={searchTrains}
-              disabled={!sourceStation || !destinationStation || loading}
+              disabled={!sourceStation || !destinationStation || !travelDate || loading}
               className="h-12 text-base font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
             >
               {loading ? (
@@ -300,7 +368,7 @@ export default function TrainSearch() {
       </Card>
 
       {/* Results Section */}
-      {sourceStation && destinationStation && (
+      {sourceStation && destinationStation && travelDate && (
         <>
           {trains.length > 0 && (
             <Card className="shadow-lg border-0">
@@ -311,12 +379,18 @@ export default function TrainSearch() {
                       {getSourceStationName()} → {getDestinationStationName()}
                     </CardTitle>
                     <p className="text-gray-600 mt-1">
-                      {trains.length} train{trains.length !== 1 ? "s" : ""} found
+                      {trains.length} train{trains.length !== 1 ? "s" : ""} found for{" "}
+                      {new Date(travelDate).toLocaleDateString("en-US", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-gray-700">Sort by:</span>
-                    <Select value={sortBy} onValueChange={(value: "price" | "time") => setSortBy(value)}>
+                    <Select value={sortBy} onValueChange={(value: "price" | "time" | "duration") => setSortBy(value)}>
                       <SelectTrigger className="w-40">
                         <ArrowUpDown className="h-4 w-4 mr-2" />
                         <SelectValue />
@@ -334,6 +408,12 @@ export default function TrainSearch() {
                             Departure Time
                           </div>
                         </SelectItem>
+                        <SelectItem value="duration">
+                          <div className="flex items-center gap-2">
+                            <Route className="h-4 w-4" />
+                            Duration
+                          </div>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -342,12 +422,15 @@ export default function TrainSearch() {
               <CardContent className="p-0">
                 <div className="space-y-0">
                   {sortedTrains.map((train, index) => (
-                    <div key={index} className="border-b last:border-b-0 hover:bg-gray-50 transition-colors">
+                    <div
+                      key={`${train.train_number}-${index}`}
+                      className="border-b last:border-b-0 hover:bg-gray-50 transition-colors"
+                    >
                       <div className="p-6">
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-100 rounded-lg">
-                              <Route className="h-5 w-5 text-blue-600" />
+                            <div className={`p-2 rounded-lg ${getTrainTypeColor(train.train_type)}`}>
+                              {getTrainTypeIcon(train.train_type)}
                             </div>
                             <div>
                               <h3 className="font-bold text-lg text-gray-900">{train.train_name}</h3>
@@ -355,6 +438,9 @@ export default function TrainSearch() {
                                 <Badge variant="outline" className="font-mono">
                                   {train.train_number}
                                 </Badge>
+                                {train.train_type && (
+                                  <Badge className={getTrainTypeColor(train.train_type)}>{train.train_type}</Badge>
+                                )}
                                 {train.route_type === "connecting" && (
                                   <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100">
                                     Connecting Journey
@@ -369,6 +455,9 @@ export default function TrainSearch() {
                               {getTotalPrice(train).toFixed(2)}
                             </div>
                             <div className="text-sm text-gray-500 mt-1">{getTotalDistance(train)} km total</div>
+                            {train.pricing_breakdown?.savings && (
+                              <div className="text-xs text-green-600 mt-1">Save ₹{train.pricing_breakdown.savings}</div>
+                            )}
                           </div>
                         </div>
 
@@ -381,10 +470,16 @@ export default function TrainSearch() {
                             </div>
 
                             <div className="flex-1 flex items-center justify-center px-4">
-                              <div className="flex items-center gap-2 text-gray-400">
-                                <div className="h-px bg-gray-300 flex-1"></div>
-                                <ArrowRight className="h-5 w-5" />
-                                <div className="h-px bg-gray-300 flex-1"></div>
+                              <div className="flex flex-col items-center gap-1">
+                                <div className="text-xs text-gray-500">
+                                  {formatDuration(train.departure_time, train.arrival_time)}
+                                </div>
+                                <div className="flex items-center gap-2 text-gray-400">
+                                  <div className="h-px bg-gray-300 flex-1 w-16"></div>
+                                  <Route className="h-4 w-4" />
+                                  <div className="h-px bg-gray-300 flex-1 w-16"></div>
+                                </div>
+                                <div className="text-xs text-gray-500">{train.distance} km</div>
                               </div>
                             </div>
 
@@ -399,11 +494,35 @@ export default function TrainSearch() {
                             </div>
                           </div>
 
-                          <div className="flex justify-center mt-3">
-                            <div className="bg-white px-3 py-1 rounded-full text-sm text-gray-600">
-                              {train.distance} km • ₹{train.price.toFixed(2)}
+                          {/* Pricing breakdown */}
+                          {train.pricing_breakdown && (
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-gray-600">Base fare:</span>
+                                <span>
+                                  ₹{train.pricing_breakdown.basePrice + train.pricing_breakdown.distancePrice}
+                                </span>
+                              </div>
+                              {train.pricing_breakdown.demandSurcharge > 0 && (
+                                <div className="flex justify-between items-center text-sm">
+                                  <span className="text-gray-600">Demand surcharge:</span>
+                                  <span className="text-orange-600">+₹{train.pricing_breakdown.demandSurcharge}</span>
+                                </div>
+                              )}
+                              {train.pricing_breakdown.weekendSurcharge > 0 && (
+                                <div className="flex justify-between items-center text-sm">
+                                  <span className="text-gray-600">Weekend surcharge:</span>
+                                  <span className="text-orange-600">+₹{train.pricing_breakdown.weekendSurcharge}</span>
+                                </div>
+                              )}
+                              {train.pricing_breakdown.savings && (
+                                <div className="flex justify-between items-center text-sm">
+                                  <span className="text-gray-600">Early bird discount:</span>
+                                  <span className="text-green-600">-₹{train.pricing_breakdown.savings}</span>
+                                </div>
+                              )}
                             </div>
-                          </div>
+                          )}
                         </div>
 
                         {train.connecting_train && (
@@ -422,6 +541,11 @@ export default function TrainSearch() {
                                 <Badge variant="outline" className="font-mono">
                                   {train.connecting_train.train_number}
                                 </Badge>
+                                {train.connecting_train.train_type && (
+                                  <Badge className={getTrainTypeColor(train.connecting_train.train_type)}>
+                                    {train.connecting_train.train_type}
+                                  </Badge>
+                                )}
                               </div>
 
                               <div className="flex items-center justify-between">
@@ -433,10 +557,19 @@ export default function TrainSearch() {
                                 </div>
 
                                 <div className="flex-1 flex items-center justify-center px-4">
-                                  <div className="flex items-center gap-2 text-gray-400">
-                                    <div className="h-px bg-gray-300 flex-1"></div>
-                                    <ArrowRight className="h-4 w-4" />
-                                    <div className="h-px bg-gray-300 flex-1"></div>
+                                  <div className="flex flex-col items-center gap-1">
+                                    <div className="text-xs text-gray-500">
+                                      {formatDuration(
+                                        train.connecting_train.departure_time,
+                                        train.connecting_train.arrival_time,
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-gray-400">
+                                      <div className="h-px bg-gray-300 flex-1 w-16"></div>
+                                      <Route className="h-4 w-4" />
+                                      <div className="h-px bg-gray-300 flex-1 w-16"></div>
+                                    </div>
+                                    <div className="text-xs text-gray-500">{train.connecting_train.distance} km</div>
                                   </div>
                                 </div>
 
@@ -446,12 +579,6 @@ export default function TrainSearch() {
                                   </div>
                                   <div className="text-sm text-gray-600 font-medium">Arrival</div>
                                   <div className="text-xs text-gray-500 mt-1">{getDestinationStationName()}</div>
-                                </div>
-                              </div>
-
-                              <div className="flex justify-center mt-3">
-                                <div className="bg-white px-3 py-1 rounded-full text-sm text-gray-600">
-                                  {train.connecting_train.distance} km • ₹{train.connecting_train.price.toFixed(2)}
                                 </div>
                               </div>
                             </div>
@@ -465,16 +592,8 @@ export default function TrainSearch() {
             </Card>
           )}
 
-          {trains.length === 0 && !loading && !error && (
-            <Card className="shadow-lg border-0">
-              <CardContent>
-                <EmptyState
-                  icon="train"
-                  title="No Trains Found"
-                  description={`Sorry, we couldn't find any trains from ${getSourceStationName()} to ${getDestinationStationName()}. Try searching for a different route or check back later.`}
-                />
-              </CardContent>
-            </Card>
+          {trains.length === 0 && !error && (
+            <EmptyState title="No trains found" description="Please try a different route or date." />
           )}
         </>
       )}

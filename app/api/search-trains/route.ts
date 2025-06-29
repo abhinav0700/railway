@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const source = searchParams.get("source")
     const destination = searchParams.get("destination")
+    const date = searchParams.get("date")
 
     if (!source || !destination) {
       return NextResponse.json({ error: "Source and destination are required" }, { status: 400 })
@@ -29,6 +30,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Station IDs must be positive integers" }, { status: 400 })
     }
 
+    // Parse and validate travel date
+    let travelDate = new Date()
+    if (date) {
+      travelDate = new Date(date)
+      if (isNaN(travelDate.getTime())) {
+        return NextResponse.json({ error: "Invalid date format. Use YYYY-MM-DD" }, { status: 400 })
+      }
+
+      // Check if date is not in the past
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (travelDate < today) {
+        return NextResponse.json({ error: "Travel date cannot be in the past" }, { status: 400 })
+      }
+
+      // Check if date is not too far in the future (120 days)
+      const maxDate = new Date()
+      maxDate.setDate(maxDate.getDate() + 120)
+      if (travelDate > maxDate) {
+        return NextResponse.json({ error: "Travel date cannot be more than 120 days in the future" }, { status: 400 })
+      }
+    }
+
     if (!isDatabaseAvailable()) {
       return NextResponse.json({
         data: [],
@@ -40,9 +64,11 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.log(`Searching trains from station ${sourceId} to station ${destinationId}`)
+    console.log(
+      `Searching trains from station ${sourceId} to station ${destinationId} for date ${travelDate.toISOString().split("T")[0]}`,
+    )
 
-    const trains = await searchTrains(sourceId, destinationId)
+    const trains = await searchTrains(sourceId, destinationId, travelDate)
 
     console.log(`Found ${trains.length} trains`)
 
@@ -53,6 +79,8 @@ export async function GET(request: NextRequest) {
         mock: false,
         sourceId,
         destinationId,
+        travelDate: travelDate.toISOString().split("T")[0],
+        searchTimestamp: new Date().toISOString(),
       },
     })
   } catch (error) {

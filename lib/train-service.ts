@@ -1,6 +1,5 @@
 import { getSql, type Station, type TrainSearchResult, DB_CONFIG, isDatabaseAvailable } from "./database"
-
-const PRICE_PER_KM = DB_CONFIG.pricePerKm
+import { calculateDynamicPrice, getPriceForAllClasses } from "./pricing-engine"
 
 async function withRetry<T>(operation: () => Promise<T>, retries = DB_CONFIG.maxRetries): Promise<T> {
   try {
@@ -23,6 +22,11 @@ export async function getAllStations(): Promise<Station[]> {
       { id: 3, name: "Chennai Central", code: "MAS" },
       { id: 4, name: "Bangalore City", code: "SBC" },
       { id: 5, name: "Kolkata", code: "KOAA" },
+      { id: 6, name: "Hyderabad Deccan", code: "HYB" },
+      { id: 7, name: "Pune Junction", code: "PUNE" },
+      { id: 8, name: "Ahmedabad Junction", code: "ADI" },
+      { id: 9, name: "Jaipur Junction", code: "JP" },
+      { id: 10, name: "Lucknow", code: "LKO" },
     ]
   }
 
@@ -41,33 +45,40 @@ export async function getAllStations(): Promise<Station[]> {
 export async function searchTrains(
   sourceStationId: number,
   destinationStationId: number,
+  travelDate?: Date,
 ): Promise<TrainSearchResult[]> {
   if (!isDatabaseAvailable()) {
     // Return empty array when database is not available
     return []
   }
 
+  const searchDate = travelDate || new Date()
+
   // First, try to find direct routes
-  const directRoutes = await findDirectRoutes(sourceStationId, destinationStationId)
+  const directRoutes = await findDirectRoutes(sourceStationId, destinationStationId, searchDate)
 
   // If no direct routes, try to find connecting routes
   let connectingRoutes: TrainSearchResult[] = []
   if (directRoutes.length === 0) {
-    connectingRoutes = await findConnectingRoutes(sourceStationId, destinationStationId)
+    connectingRoutes = await findConnectingRoutes(sourceStationId, destinationStationId, searchDate)
   }
 
   return [...directRoutes, ...connectingRoutes]
 }
 
-async function findDirectRoutes(sourceStationId: number, destinationStationId: number): Promise<TrainSearchResult[]> {
+async function findDirectRoutes(
+  sourceStationId: number,
+  destinationStationId: number,
+  travelDate: Date,
+): Promise<TrainSearchResult[]> {
   const sql = getSql()
 
-  // Fixed SQL query - calculate price in JavaScript instead of SQL
   const routes = await sql`
     WITH route_info AS (
       SELECT 
         t.name as train_name,
         t.train_number,
+        t.train_type,
         source_route.departure_time as departure_time,
         dest_route.departure_time as arrival_time,
         (dest_route.distance_from_start - source_route.distance_from_start) as distance
@@ -84,6 +95,7 @@ async function findDirectRoutes(sourceStationId: number, destinationStationId: n
     SELECT 
       train_name,
       train_number,
+      train_type,
       departure_time,
       arrival_time,
       distance
@@ -91,18 +103,26 @@ async function findDirectRoutes(sourceStationId: number, destinationStationId: n
     ORDER BY distance ASC, departure_time ASC
   `
 
-  // Calculate price in JavaScript
-  return routes.map((route) => ({
-    ...route,
-    route_type: "direct" as const,
-    price: Number(route.distance) * PRICE_PER_KM,
-    distance: Number(route.distance),
-  }))
+  // Calculate dynamic pricing for each route
+  return routes.map((route) => {
+    const pricing = calculateDynamicPrice(Number(route.distance), route.train_type, travelDate)
+
+    return {
+      ...route,
+      route_type: "direct" as const,
+      price: pricing.totalPrice,
+      distance: Number(route.distance),
+      pricing_breakdown: pricing,
+      travel_date: travelDate.toISOString().split("T")[0],
+      available_classes: getPriceForAllClasses(Number(route.distance), route.train_type, travelDate),
+    }
+  })
 }
 
 async function findConnectingRoutes(
   sourceStationId: number,
   destinationStationId: number,
+  travelDate: Date,
 ): Promise<TrainSearchResult[]> {
   const sql = getSql()
 
@@ -126,7 +146,7 @@ async function findConnectingRoutes(
     AND s.is_active = true
     AND tr1.is_active = true
     AND tr2.is_active = true
-    LIMIT 10
+    LIMIT 5
   `
 
   const connectingRoutes: TrainSearchResult[] = []
@@ -138,6 +158,7 @@ async function findConnectingRoutes(
         SELECT 
           t.name as train_name,
           t.train_number,
+          t.train_type,
           source_route.departure_time,
           conn_route.departure_time as arrival_time,
           (conn_route.distance_from_start - source_route.distance_from_start) as distance
@@ -161,6 +182,7 @@ async function findConnectingRoutes(
         SELECT 
           t.name as train_name,
           t.train_number,
+          t.train_type,
           conn_route.departure_time,
           dest_route.departure_time as arrival_time,
           (dest_route.distance_from_start - conn_route.distance_from_start) as distance
@@ -180,27 +202,33 @@ async function findConnectingRoutes(
 
       if (secondLeg.length === 0) continue
 
-      // Calculate prices in JavaScript
+      // Calculate prices for both legs
       const firstLegDistance = Number(firstLeg[0].distance)
       const secondLegDistance = Number(secondLeg[0].distance)
-      const firstLegPrice = firstLegDistance * PRICE_PER_KM
-      const secondLegPrice = secondLegDistance * PRICE_PER_KM
+
+      const firstLegPricing = calculateDynamicPrice(firstLegDistance, firstLeg[0].train_type, travelDate)
+      const secondLegPricing = calculateDynamicPrice(secondLegDistance, secondLeg[0].train_type, travelDate)
 
       connectingRoutes.push({
         train_name: firstLeg[0].train_name,
         train_number: firstLeg[0].train_number,
+        train_type: firstLeg[0].train_type,
         departure_time: firstLeg[0].departure_time,
         arrival_time: firstLeg[0].arrival_time,
         distance: firstLegDistance,
-        price: firstLegPrice,
+        price: firstLegPricing.totalPrice,
         route_type: "connecting",
+        travel_date: travelDate.toISOString().split("T")[0],
+        pricing_breakdown: firstLegPricing,
         connecting_train: {
           train_name: secondLeg[0].train_name,
           train_number: secondLeg[0].train_number,
+          train_type: secondLeg[0].train_type,
           departure_time: secondLeg[0].departure_time,
           arrival_time: secondLeg[0].arrival_time,
           distance: secondLegDistance,
-          price: secondLegPrice,
+          price: secondLegPricing.totalPrice,
+          pricing_breakdown: secondLegPricing,
         },
       })
     } catch (error) {
