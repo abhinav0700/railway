@@ -1,8 +1,13 @@
-import { sql } from "./database"
+import { getSql, isDatabaseAvailable } from "./database"
 
 export async function testDatabaseConnection() {
   try {
+    if (!isDatabaseAvailable()) {
+      throw new Error("Database not configured. Please set NEON_DATABASE_URL environment variable.")
+    }
+
     console.log("🔍 Testing Neon database connection...")
+    const sql = getSql()
 
     // Test basic connection
     const result = await sql`SELECT NOW() as current_time, version() as db_version`
@@ -22,9 +27,9 @@ export async function testDatabaseConnection() {
     console.log("📋 Available tables:", tables.map((t) => t.table_name).join(", "))
 
     // Test data counts
-    const stationCount = await sql`SELECT COUNT(*) as count FROM stations`
-    const trainCount = await sql`SELECT COUNT(*) as count FROM trains`
-    const routeCount = await sql`SELECT COUNT(*) as count FROM train_routes`
+    const stationCount = await sql`SELECT COUNT(*) as count FROM stations WHERE is_active = true`
+    const trainCount = await sql`SELECT COUNT(*) as count FROM trains WHERE is_active = true`
+    const routeCount = await sql`SELECT COUNT(*) as count FROM train_routes WHERE is_active = true`
 
     console.log("📊 Data summary:")
     console.log(`   - Stations: ${stationCount[0].count}`)
@@ -40,13 +45,26 @@ export async function testDatabaseConnection() {
     }
   } catch (error) {
     console.error("❌ Database connection failed:", error)
-    throw error
+    return {
+      connected: false,
+      tables: 0,
+      stations: 0,
+      trains: 0,
+      routes: 0,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
   }
 }
 
 export async function setupDatabase() {
   try {
+    if (!isDatabaseAvailable()) {
+      console.log("⚠️ Database not available. Skipping setup.")
+      return false
+    }
+
     console.log("🚀 Setting up database...")
+    const sql = getSql()
 
     // Check if setup is needed
     const tables = await sql`
@@ -65,6 +83,6 @@ export async function setupDatabase() {
     return true
   } catch (error) {
     console.error("❌ Database setup failed:", error)
-    throw error
+    return false
   }
 }

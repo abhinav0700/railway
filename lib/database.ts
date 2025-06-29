@@ -1,13 +1,25 @@
 import { neon } from "@neondatabase/serverless"
 
-// Neon database configuration
-const DATABASE_URL = process.env.NEON_DATABASE_URL
+// Neon database configuration with build-time safety
+const DATABASE_URL = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL
 
-if (!DATABASE_URL) {
-  throw new Error("NEON_DATABASE_URL environment variable is required. Please add it to your .env.local file.")
+// Only throw error at runtime, not during build
+let sql: any = null
+
+if (DATABASE_URL) {
+  sql = neon(DATABASE_URL)
+} else if (typeof window === "undefined" && process.env.NODE_ENV !== "production") {
+  // Only warn during development, not during build
+  console.warn("⚠️ NEON_DATABASE_URL not found. Database features will be disabled.")
 }
 
-export const sql = neon(DATABASE_URL)
+// Safe database connection function
+export function getSql() {
+  if (!sql) {
+    throw new Error("Database not configured. Please set NEON_DATABASE_URL environment variable.")
+  }
+  return sql
+}
 
 // Database configuration - Change these settings as needed
 export const DB_CONFIG = {
@@ -25,6 +37,11 @@ export const DB_CONFIG = {
   // App metadata
   appName: process.env.NEXT_PUBLIC_APP_NAME || "RailConnect",
   appVersion: process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0",
+}
+
+// Check if database is available
+export function isDatabaseAvailable(): boolean {
+  return !!DATABASE_URL && !!sql
 }
 
 export interface Station {

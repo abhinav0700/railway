@@ -1,4 +1,4 @@
-import { sql, type Station, type TrainSearchResult, DB_CONFIG } from "./database"
+import { getSql, type Station, type TrainSearchResult, DB_CONFIG, isDatabaseAvailable } from "./database"
 
 const PRICE_PER_KM = DB_CONFIG.pricePerKm
 
@@ -15,10 +15,23 @@ async function withRetry<T>(operation: () => Promise<T>, retries = DB_CONFIG.max
 }
 
 export async function getAllStations(): Promise<Station[]> {
+  if (!isDatabaseAvailable()) {
+    // Return mock data for demo purposes when database is not available
+    return [
+      { id: 1, name: "New Delhi", code: "NDLS" },
+      { id: 2, name: "Mumbai Central", code: "MMCT" },
+      { id: 3, name: "Chennai Central", code: "MAS" },
+      { id: 4, name: "Bangalore City", code: "SBC" },
+      { id: 5, name: "Kolkata", code: "KOAA" },
+    ]
+  }
+
   return withRetry(async () => {
+    const sql = getSql()
     const stations = await sql`
       SELECT id, name, code 
       FROM stations 
+      WHERE is_active = true
       ORDER BY name
     `
     return stations as Station[]
@@ -29,6 +42,11 @@ export async function searchTrains(
   sourceStationId: number,
   destinationStationId: number,
 ): Promise<TrainSearchResult[]> {
+  if (!isDatabaseAvailable()) {
+    // Return empty array when database is not available
+    return []
+  }
+
   // First, try to find direct routes
   const directRoutes = await findDirectRoutes(sourceStationId, destinationStationId)
 
@@ -42,6 +60,7 @@ export async function searchTrains(
 }
 
 async function findDirectRoutes(sourceStationId: number, destinationStationId: number): Promise<TrainSearchResult[]> {
+  const sql = getSql()
   const routes = await sql`
     WITH route_info AS (
       SELECT 
@@ -56,6 +75,9 @@ async function findDirectRoutes(sourceStationId: number, destinationStationId: n
       WHERE source_route.station_id = ${sourceStationId}
         AND dest_route.station_id = ${destinationStationId}
         AND source_route.sequence_number < dest_route.sequence_number
+        AND t.is_active = true
+        AND source_route.is_active = true
+        AND dest_route.is_active = true
     )
     SELECT 
       train_name,
@@ -79,6 +101,8 @@ async function findConnectingRoutes(
   sourceStationId: number,
   destinationStationId: number,
 ): Promise<TrainSearchResult[]> {
+  const sql = getSql()
+
   // Find stations that can serve as connection points
   const connectionPoints = await sql`
     SELECT DISTINCT s.id, s.name
@@ -88,14 +112,17 @@ async function findConnectingRoutes(
     WHERE tr1.train_id IN (
       SELECT DISTINCT train_id 
       FROM train_routes 
-      WHERE station_id = ${sourceStationId}
+      WHERE station_id = ${sourceStationId} AND is_active = true
     )
     AND tr2.train_id IN (
       SELECT DISTINCT train_id 
       FROM train_routes 
-      WHERE station_id = ${destinationStationId}
+      WHERE station_id = ${destinationStationId} AND is_active = true
     )
     AND s.id NOT IN (${sourceStationId}, ${destinationStationId})
+    AND s.is_active = true
+    AND tr1.is_active = true
+    AND tr2.is_active = true
   `
 
   const connectingRoutes: TrainSearchResult[] = []
@@ -115,6 +142,9 @@ async function findConnectingRoutes(
       WHERE source_route.station_id = ${sourceStationId}
         AND conn_route.station_id = ${connection.id}
         AND source_route.sequence_number < conn_route.sequence_number
+        AND t.is_active = true
+        AND source_route.is_active = true
+        AND conn_route.is_active = true
       ORDER BY source_route.departure_time ASC
       LIMIT 1
     `
@@ -136,6 +166,9 @@ async function findConnectingRoutes(
         AND dest_route.station_id = ${destinationStationId}
         AND conn_route.sequence_number < dest_route.sequence_number
         AND conn_route.departure_time >= ${firstLeg[0].arrival_time}
+        AND t.is_active = true
+        AND conn_route.is_active = true
+        AND dest_route.is_active = true
       ORDER BY conn_route.departure_time ASC
       LIMIT 1
     `

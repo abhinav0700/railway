@@ -7,8 +7,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { EmptyState } from "@/components/ui/empty-state"
-import { ArrowRight, MapPin, Clock, IndianRupee, Route, RefreshCw, ArrowUpDown } from "lucide-react"
+import { ArrowRight, MapPin, Clock, IndianRupee, Route, RefreshCw, ArrowUpDown, AlertTriangle } from "lucide-react"
 import type { Station, TrainSearchResult } from "@/lib/database"
+
+interface StationsResponse {
+  data: Station[]
+  meta: {
+    total: number
+    mock: boolean
+    message?: string
+  }
+}
+
+interface TrainsResponse {
+  data: TrainSearchResult[]
+  meta: {
+    total: number
+    mock: boolean
+    message?: string
+  }
+}
 
 export default function TrainSearch() {
   const [stations, setStations] = useState<Station[]>([])
@@ -19,6 +37,8 @@ export default function TrainSearch() {
   const [stationsLoading, setStationsLoading] = useState(true)
   const [sortBy, setSortBy] = useState<"price" | "time">("price")
   const [error, setError] = useState<string>("")
+  const [isMockData, setIsMockData] = useState(false)
+  const [mockMessage, setMockMessage] = useState<string>("")
 
   useEffect(() => {
     fetchStations()
@@ -29,8 +49,18 @@ export default function TrainSearch() {
     try {
       const response = await fetch("/api/stations")
       if (!response.ok) throw new Error("Failed to fetch stations")
-      const data = await response.json()
-      setStations(data)
+      const data: StationsResponse = await response.json()
+
+      if ("data" in data) {
+        setStations(data.data)
+        setIsMockData(data.meta.mock)
+        if (data.meta.message) {
+          setMockMessage(data.meta.message)
+        }
+      } else {
+        // Fallback for old API format
+        setStations(data as any)
+      }
       setError("")
     } catch (error) {
       console.error("Error fetching stations:", error)
@@ -47,12 +77,20 @@ export default function TrainSearch() {
     setError("")
     try {
       const response = await fetch(`/api/search-trains?source=${sourceStation}&destination=${destinationStation}`)
-      const data = await response.json()
+      const data: TrainsResponse = await response.json()
 
       if (response.ok) {
-        setTrains(data)
+        if ("data" in data) {
+          setTrains(data.data)
+          if (data.meta.message) {
+            setError(data.meta.message)
+          }
+        } else {
+          // Fallback for old API format
+          setTrains(data as any)
+        }
       } else {
-        setError(data.error || "Failed to search trains")
+        setError((data as any).error || "Failed to search trains")
         setTrains([])
       }
     } catch (error) {
@@ -119,6 +157,28 @@ export default function TrainSearch() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
+      {/* Mock Data Warning */}
+      {isMockData && mockMessage && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-orange-600" />
+              <div>
+                <p className="font-medium text-orange-900">Demo Mode</p>
+                <p className="text-sm text-orange-700">{mockMessage}</p>
+                <p className="text-xs text-orange-600 mt-1">
+                  Visit{" "}
+                  <a href="/admin" className="underline font-medium">
+                    /admin
+                  </a>{" "}
+                  for setup instructions.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search Card */}
       <Card className="shadow-lg border-0 bg-white">
         <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
@@ -130,7 +190,7 @@ export default function TrainSearch() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-8">
-          {error && (
+          {error && !isMockData && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700 font-medium">{error}</p>
             </div>
@@ -378,7 +438,7 @@ export default function TrainSearch() {
             </Card>
           )}
 
-          {trains.length === 0 && !loading && (
+          {trains.length === 0 && !loading && !isMockData && (
             <Card className="shadow-lg border-0">
               <CardContent>
                 <EmptyState
