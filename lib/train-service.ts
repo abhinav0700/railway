@@ -61,6 +61,8 @@ export async function searchTrains(
 
 async function findDirectRoutes(sourceStationId: number, destinationStationId: number): Promise<TrainSearchResult[]> {
   const sql = getSql()
+
+  // Fixed SQL query - calculate price in JavaScript instead of SQL
   const routes = await sql`
     WITH route_info AS (
       SELECT 
@@ -84,16 +86,17 @@ async function findDirectRoutes(sourceStationId: number, destinationStationId: n
       train_number,
       departure_time,
       arrival_time,
-      distance,
-      (distance * ${PRICE_PER_KM}) as price
+      distance
     FROM route_info
-    ORDER BY price ASC, departure_time ASC
+    ORDER BY distance ASC, departure_time ASC
   `
 
+  // Calculate price in JavaScript
   return routes.map((route) => ({
     ...route,
     route_type: "direct" as const,
-    price: Number(route.price),
+    price: Number(route.distance) * PRICE_PER_KM,
+    distance: Number(route.distance),
   }))
 }
 
@@ -123,78 +126,87 @@ async function findConnectingRoutes(
     AND s.is_active = true
     AND tr1.is_active = true
     AND tr2.is_active = true
+    LIMIT 10
   `
 
   const connectingRoutes: TrainSearchResult[] = []
 
   for (const connection of connectionPoints) {
-    // Find first leg (source to connection)
-    const firstLeg = await sql`
-      SELECT 
-        t.name as train_name,
-        t.train_number,
-        source_route.departure_time,
-        conn_route.departure_time as arrival_time,
-        (conn_route.distance_from_start - source_route.distance_from_start) as distance
-      FROM trains t
-      JOIN train_routes source_route ON t.id = source_route.train_id
-      JOIN train_routes conn_route ON t.id = conn_route.train_id
-      WHERE source_route.station_id = ${sourceStationId}
-        AND conn_route.station_id = ${connection.id}
-        AND source_route.sequence_number < conn_route.sequence_number
-        AND t.is_active = true
-        AND source_route.is_active = true
-        AND conn_route.is_active = true
-      ORDER BY source_route.departure_time ASC
-      LIMIT 1
-    `
+    try {
+      // Find first leg (source to connection)
+      const firstLeg = await sql`
+        SELECT 
+          t.name as train_name,
+          t.train_number,
+          source_route.departure_time,
+          conn_route.departure_time as arrival_time,
+          (conn_route.distance_from_start - source_route.distance_from_start) as distance
+        FROM trains t
+        JOIN train_routes source_route ON t.id = source_route.train_id
+        JOIN train_routes conn_route ON t.id = conn_route.train_id
+        WHERE source_route.station_id = ${sourceStationId}
+          AND conn_route.station_id = ${connection.id}
+          AND source_route.sequence_number < conn_route.sequence_number
+          AND t.is_active = true
+          AND source_route.is_active = true
+          AND conn_route.is_active = true
+        ORDER BY source_route.departure_time ASC
+        LIMIT 1
+      `
 
-    if (firstLeg.length === 0) continue
+      if (firstLeg.length === 0) continue
 
-    // Find second leg (connection to destination) that departs after first leg arrives
-    const secondLeg = await sql`
-      SELECT 
-        t.name as train_name,
-        t.train_number,
-        conn_route.departure_time,
-        dest_route.departure_time as arrival_time,
-        (dest_route.distance_from_start - conn_route.distance_from_start) as distance
-      FROM trains t
-      JOIN train_routes conn_route ON t.id = conn_route.train_id
-      JOIN train_routes dest_route ON t.id = dest_route.train_id
-      WHERE conn_route.station_id = ${connection.id}
-        AND dest_route.station_id = ${destinationStationId}
-        AND conn_route.sequence_number < dest_route.sequence_number
-        AND conn_route.departure_time >= ${firstLeg[0].arrival_time}
-        AND t.is_active = true
-        AND conn_route.is_active = true
-        AND dest_route.is_active = true
-      ORDER BY conn_route.departure_time ASC
-      LIMIT 1
-    `
+      // Find second leg (connection to destination) that departs after first leg arrives
+      const secondLeg = await sql`
+        SELECT 
+          t.name as train_name,
+          t.train_number,
+          conn_route.departure_time,
+          dest_route.departure_time as arrival_time,
+          (dest_route.distance_from_start - conn_route.distance_from_start) as distance
+        FROM trains t
+        JOIN train_routes conn_route ON t.id = conn_route.train_id
+        JOIN train_routes dest_route ON t.id = dest_route.train_id
+        WHERE conn_route.station_id = ${connection.id}
+          AND dest_route.station_id = ${destinationStationId}
+          AND conn_route.sequence_number < dest_route.sequence_number
+          AND conn_route.departure_time >= ${firstLeg[0].arrival_time}
+          AND t.is_active = true
+          AND conn_route.is_active = true
+          AND dest_route.is_active = true
+        ORDER BY conn_route.departure_time ASC
+        LIMIT 1
+      `
 
-    if (secondLeg.length === 0) continue
+      if (secondLeg.length === 0) continue
 
-    const totalDistance = firstLeg[0].distance + secondLeg[0].distance
-    const totalPrice = totalDistance * PRICE_PER_KM
+      // Calculate prices in JavaScript
+      const firstLegDistance = Number(firstLeg[0].distance)
+      const secondLegDistance = Number(secondLeg[0].distance)
+      const firstLegPrice = firstLegDistance * PRICE_PER_KM
+      const secondLegPrice = secondLegDistance * PRICE_PER_KM
 
-    connectingRoutes.push({
-      train_name: firstLeg[0].train_name,
-      train_number: firstLeg[0].train_number,
-      departure_time: firstLeg[0].departure_time,
-      arrival_time: firstLeg[0].arrival_time,
-      distance: firstLeg[0].distance,
-      price: firstLeg[0].distance * PRICE_PER_KM,
-      route_type: "connecting",
-      connecting_train: {
-        train_name: secondLeg[0].train_name,
-        train_number: secondLeg[0].train_number,
-        departure_time: secondLeg[0].departure_time,
-        arrival_time: secondLeg[0].arrival_time,
-        distance: secondLeg[0].distance,
-        price: secondLeg[0].distance * PRICE_PER_KM,
-      },
-    })
+      connectingRoutes.push({
+        train_name: firstLeg[0].train_name,
+        train_number: firstLeg[0].train_number,
+        departure_time: firstLeg[0].departure_time,
+        arrival_time: firstLeg[0].arrival_time,
+        distance: firstLegDistance,
+        price: firstLegPrice,
+        route_type: "connecting",
+        connecting_train: {
+          train_name: secondLeg[0].train_name,
+          train_number: secondLeg[0].train_number,
+          departure_time: secondLeg[0].departure_time,
+          arrival_time: secondLeg[0].arrival_time,
+          distance: secondLegDistance,
+          price: secondLegPrice,
+        },
+      })
+    } catch (error) {
+      console.error(`Error processing connection point ${connection.name}:`, error)
+      continue
+    }
   }
 
   return connectingRoutes.sort((a, b) => {

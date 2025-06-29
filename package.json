@@ -12,8 +12,9 @@
     "db:test": "node -r dotenv/config scripts/test-connection.js",
     "dev": "next dev",
     "env:check": "node -r dotenv/config scripts/check-env.js",
-    "env:example": "cp .env.example .env.local && echo 'Created .env.local from example. Please edit it with your values.'",
+    "env:setup": "echo 'DATABASE_URL=postgres://neondb_owner:npg_6RPiON9cguzx@ep-crimson-meadow-a4n91tly-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require' > .env.local && echo 'NEXT_PUBLIC_APP_NAME=RailConnect' >> .env.local && echo 'NEXT_PUBLIC_APP_VERSION=1.0.0' >> .env.local && echo '.env.local created with your Neon credentials!'",
     "lint": "next lint",
+    "setup": "npm run env:setup && npm run db:setup && npm run db:seed && npm run db:test && echo '🎉 Setup complete! Run npm run dev to start the application.'",
     "start": "next start"
   },
   "dependencies": {

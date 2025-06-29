@@ -1,22 +1,24 @@
 import { NextResponse } from "next/server"
 import { testDatabaseConnection } from "@/lib/neon-setup"
-import { isDatabaseAvailable } from "@/lib/database"
+import { isDatabaseAvailable, getDatabaseStatus } from "@/lib/database"
 
 export async function GET() {
   try {
+    const dbStatus = getDatabaseStatus()
+
     // Check if database is configured
     if (!isDatabaseAvailable()) {
       return NextResponse.json({
         status: "partial",
         timestamp: new Date().toISOString(),
         database: {
+          ...dbStatus,
           connected: false,
-          configured: false,
-          message: "Database not configured. Please set NEON_DATABASE_URL environment variable.",
+          message: "Database configured but connection failed. Please check your credentials.",
         },
         environment: {
           nodeEnv: process.env.NODE_ENV || "development",
-          hasNeonUrl: !!process.env.NEON_DATABASE_URL,
+          hasNeonUrl: !!process.env.DATABASE_URL,
           appName: process.env.NEXT_PUBLIC_APP_NAME || "RailConnect",
           version: process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0",
         },
@@ -26,6 +28,7 @@ export async function GET() {
           priceCalculation: true,
           sorting: true,
           realTimeUpdates: false,
+          authentication: false,
         },
         pricing: {
           baseRate: 1.25,
@@ -36,30 +39,31 @@ export async function GET() {
     }
 
     // Test database connection
-    const dbStatus = await testDatabaseConnection()
+    const connectionTest = await testDatabaseConnection()
 
     return NextResponse.json({
-      status: dbStatus.connected ? "healthy" : "unhealthy",
+      status: connectionTest.connected ? "healthy" : "unhealthy",
       timestamp: new Date().toISOString(),
       database: {
         ...dbStatus,
-        configured: true,
+        ...connectionTest,
       },
       environment: {
         nodeEnv: process.env.NODE_ENV || "development",
-        hasNeonUrl: !!process.env.NEON_DATABASE_URL,
+        hasNeonUrl: !!process.env.DATABASE_URL,
         appName: process.env.NEXT_PUBLIC_APP_NAME || "RailConnect",
         version: process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0",
       },
       features: {
-        directRoutes: dbStatus.connected,
-        connectingRoutes: dbStatus.connected,
+        directRoutes: connectionTest.connected,
+        connectingRoutes: connectionTest.connected,
         priceCalculation: true,
         sorting: true,
         realTimeUpdates: false,
+        authentication: false,
       },
       pricing: {
-        baseRate: 1.25,
+        baseRate: Number(process.env.PRICE_PER_KM) || 1.25,
         currency: "INR",
         unit: "per_km",
       },
@@ -71,12 +75,12 @@ export async function GET() {
         timestamp: new Date().toISOString(),
         error: error instanceof Error ? error.message : "Unknown error",
         database: {
+          ...getDatabaseStatus(),
           connected: false,
-          configured: isDatabaseAvailable(),
         },
         environment: {
           nodeEnv: process.env.NODE_ENV || "development",
-          hasNeonUrl: !!process.env.NEON_DATABASE_URL,
+          hasNeonUrl: !!process.env.DATABASE_URL,
           appName: process.env.NEXT_PUBLIC_APP_NAME || "RailConnect",
           version: process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0",
         },

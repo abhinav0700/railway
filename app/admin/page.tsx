@@ -133,7 +133,7 @@ export default function AdminPage() {
               <div className="bg-gray-50 p-4 rounded-lg">
                 <pre className="text-sm text-gray-700">
                   {`# Add these to your .env.local file:
-NEON_DATABASE_URL=postgresql://username:password@ep-xxxxx.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://username:password@ep-xxxxx.neon.tech/neondb?sslmode=require
 NEXT_PUBLIC_APP_NAME=RailConnect
 NEXT_PUBLIC_APP_VERSION=1.0.0
 

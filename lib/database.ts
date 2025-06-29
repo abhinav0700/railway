@@ -1,27 +1,39 @@
 import { neon } from "@neondatabase/serverless"
 
-// Neon database configuration with build-time safety
-const DATABASE_URL = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL
+// Neon database configuration with multiple fallback options
+const DATABASE_URL =
+  process.env.NEON_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL
 
-// Only throw error at runtime, not during build
+if (!DATABASE_URL) {
+  console.warn("⚠️ No database URL found. Database features will be disabled.")
+}
+
+// Initialize database connection
 let sql: any = null
 
 if (DATABASE_URL) {
-  sql = neon(DATABASE_URL)
+  try {
+    sql = neon(DATABASE_URL)
+    console.log("✅ Database connection initialized")
+  } catch (error) {
+    console.error("❌ Failed to initialize database connection:", error)
+  }
 } else if (typeof window === "undefined" && process.env.NODE_ENV !== "production") {
-  // Only warn during development, not during build
-  console.warn("⚠️ NEON_DATABASE_URL not found. Database features will be disabled.")
+  console.warn("⚠️ Database not configured. Using demo mode.")
 }
 
 // Safe database connection function
 export function getSql() {
   if (!sql) {
-    throw new Error("Database not configured. Please set NEON_DATABASE_URL environment variable.")
+    throw new Error("Database not configured. Please set DATABASE_URL environment variable.")
   }
   return sql
 }
 
-// Database configuration - Change these settings as needed
+// Database configuration
 export const DB_CONFIG = {
   // Connection settings
   connectionTimeoutMillis: 30000,
@@ -29,19 +41,38 @@ export const DB_CONFIG = {
   maxRetries: 3,
   retryDelay: 1000,
 
-  // Application settings
-  pricePerKm: 1.25, // Change this to modify price calculation (₹1.25 per km)
-  maxConnectingRoutes: 5, // Maximum connecting routes to find
-  searchTimeout: 10000, // Search timeout in milliseconds
+  // Application settings - ensure this is a number
+  pricePerKm: Number(process.env.PRICE_PER_KM) || 1.25, // ₹1.25 per km
+  maxConnectingRoutes: 5,
+  searchTimeout: 10000,
 
-  // App metadata
+  // App metadata from environment
   appName: process.env.NEXT_PUBLIC_APP_NAME || "RailConnect",
   appVersion: process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0",
+
+  // Database connection info
+  host: process.env.PGHOST || process.env.POSTGRES_HOST,
+  database: process.env.PGDATABASE || process.env.POSTGRES_DATABASE,
+  user: process.env.PGUSER || process.env.POSTGRES_USER,
 }
 
 // Check if database is available
 export function isDatabaseAvailable(): boolean {
   return !!DATABASE_URL && !!sql
+}
+
+// Database connection status
+export function getDatabaseStatus() {
+  return {
+    configured: !!DATABASE_URL,
+    connected: !!sql,
+    host: DB_CONFIG.host,
+    database: DB_CONFIG.database,
+    user: DB_CONFIG.user,
+    hasPooling: !!process.env.DATABASE_URL,
+    hasUnpooled: !!process.env.DATABASE_URL_UNPOOLED,
+    pricePerKm: DB_CONFIG.pricePerKm,
+  }
 }
 
 export interface Station {

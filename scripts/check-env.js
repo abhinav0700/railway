@@ -1,7 +1,7 @@
 // Environment variable checker script
 console.log("🔍 Checking Environment Variables...\n")
 
-const requiredVars = ["NEON_DATABASE_URL", "NEXT_PUBLIC_APP_NAME", "NEXT_PUBLIC_APP_VERSION"]
+const requiredVars = ["DATABASE_URL", "NEXT_PUBLIC_APP_NAME", "NEXT_PUBLIC_APP_VERSION"]
 
 const optionalVars = ["NODE_ENV", "PRICE_PER_KM", "ENABLE_CONNECTING_ROUTES"]
 

@@ -25,6 +25,8 @@ interface TrainsResponse {
     total: number
     mock: boolean
     message?: string
+    sourceId?: number
+    destinationId?: number
   }
 }
 
@@ -73,24 +75,45 @@ export default function TrainSearch() {
   const searchTrains = async () => {
     if (!sourceStation || !destinationStation) return
 
+    // Validate station IDs before making the request
+    const sourceId = Number.parseInt(sourceStation, 10)
+    const destinationId = Number.parseInt(destinationStation, 10)
+
+    if (isNaN(sourceId) || isNaN(destinationId)) {
+      setError("Invalid station selection. Please select valid stations.")
+      return
+    }
+
+    if (sourceId === destinationId) {
+      setError("Source and destination cannot be the same. Please select different stations.")
+      return
+    }
+
     setLoading(true)
     setError("")
+    setTrains([])
+
     try {
-      const response = await fetch(`/api/search-trains?source=${sourceStation}&destination=${destinationStation}`)
+      console.log(`Searching trains from ${sourceId} to ${destinationId}`)
+
+      const response = await fetch(`/api/search-trains?source=${sourceId}&destination=${destinationId}`)
       const data: TrainsResponse = await response.json()
 
       if (response.ok) {
         if ("data" in data) {
           setTrains(data.data)
-          if (data.meta.message) {
+          if (data.meta.message && data.meta.mock) {
             setError(data.meta.message)
+          } else if (data.data.length === 0) {
+            setError("No trains found for the selected route. Try a different route or check back later.")
           }
         } else {
           // Fallback for old API format
           setTrains(data as any)
         }
       } else {
-        setError((data as any).error || "Failed to search trains")
+        const errorData = data as any
+        setError(errorData.error || errorData.details || "Failed to search trains")
         setTrains([])
       }
     } catch (error) {
@@ -119,11 +142,15 @@ export default function TrainSearch() {
   })
 
   const formatTime = (time: string) => {
-    return new Date(`2000-01-01T${time}`).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    })
+    try {
+      return new Date(`2000-01-01T${time}`).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
+    } catch (error) {
+      return time // Return original time if formatting fails
+    }
   }
 
   const getTotalPrice = (train: TrainSearchResult) => {
@@ -438,7 +465,7 @@ export default function TrainSearch() {
             </Card>
           )}
 
-          {trains.length === 0 && !loading && !isMockData && (
+          {trains.length === 0 && !loading && !error && (
             <Card className="shadow-lg border-0">
               <CardContent>
                 <EmptyState
