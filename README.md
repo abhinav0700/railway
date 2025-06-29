@@ -1,30 +1,56 @@
-# Train search application
+# 🚆 Train Search Web Application
 
-*Automatically synced with your [v0.dev](https://v0.dev) deployments*
+Live Demo: [https://v0-train-search-application.vercel.app/](https://v0-train-search-application.vercel.app/)
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/abhinav0700s-projects/v0-train-search-application)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/BjS0m4cgkdd)
+## 📌 Overview
 
-## Overview
+This is a scalable Train Search Web Application that allows users to:
+- Select **source** and **destination** stations from dropdowns
+- View a list of available trains on that route
+- Sort trains based on **price** or **timing**
+- See dynamic ticket pricing based on distance (₹1.25/km)
+- Get **chained route suggestions** if no direct trains are available
+- Receive appropriate feedback when no route is available
 
-This repository will stay in sync with your deployed chats on [v0.dev](https://v0.dev).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.dev](https://v0.dev).
+---
 
-## Deployment
+## ✨ Features
 
-Your project is live at:
+- 🚉 Real-time search from a large set of generated train data (1000+ trains)
+- 📍 Dropdown selection for source and destination
+- 💵 Pricing calculated by distance at ₹1.25/km
+- 🔁 Intelligent multi-train chaining if no direct route is available
+- 🔄 Sorting support: by **price** or **departure time**
+- 📱 Fully responsive and user-friendly UI
+- ⚙️ Scalable backend with RESTful APIs
 
-**[https://vercel.com/abhinav0700s-projects/v0-train-search-application](https://vercel.com/abhinav0700s-projects/v0-train-search-application)**
+---
 
-## Build your app
+## 🛠️ Tech Stack
 
-Continue building your app on:
+### Frontend:
+- React.js
+- Tailwind CSS
+- Vite (or Create React App)
+- Axios for API calls
 
-**[https://v0.dev/chat/projects/BjS0m4cgkdd](https://v0.dev/chat/projects/BjS0m4cgkdd)**
+### Backend:
+- Node.js
+- Express.js
 
-## How It Works
+### Database:
+- Neon DataBase
 
-1. Create and modify your project using [v0.dev](https://v0.dev)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+---
+
+## 🧪 Test Data Generation
+
+- A custom script is included to populate the database with **1000 trains** and their corresponding station routes using realistic data.
+- The script ensures coverage of:
+  - Direct routes
+  - Chained connections
+  - Edge cases (no route available)
+
+> 📝 To run the test data script:
+```bash
+node scripts/generateTrains.js
