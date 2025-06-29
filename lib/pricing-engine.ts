@@ -23,20 +23,20 @@ export interface PriceBreakdown {
   originalPrice?: number
 }
 
-// Base pricing configuration
+// Base pricing configuration - Updated to use ₹1.25/km as base
 const PRICING_CONFIG = {
-  // Base rates per km for different train types
+  // Base rates per km for different train types (all based on ₹1.25/km)
   trainTypeRates: {
-    Rajdhani: 2.5,
-    Shatabdi: 2.2,
-    Duronto: 2.0,
-    Superfast: 1.8,
-    Express: 1.5,
-    Mail: 1.3,
-    Passenger: 1.0,
-    "Jan Shatabdi": 1.6,
-    Intercity: 1.4,
-    Local: 0.8,
+    Rajdhani: 1.25 * 2.0, // ₹2.50/km
+    Shatabdi: 1.25 * 1.76, // ₹2.20/km
+    Duronto: 1.25 * 1.6, // ₹2.00/km
+    Superfast: 1.25 * 1.44, // ₹1.80/km
+    Express: 1.25 * 1.2, // ₹1.50/km
+    Mail: 1.25 * 1.04, // ₹1.30/km
+    Passenger: 1.25 * 0.8, // ₹1.00/km
+    "Jan Shatabdi": 1.25 * 1.28, // ₹1.60/km
+    Intercity: 1.25 * 1.12, // ₹1.40/km
+    Local: 1.25 * 0.64, // ₹0.80/km
   },
 
   // Class multipliers
@@ -95,8 +95,8 @@ export function calculateDynamicPrice(
   travelDate: Date,
   bookingClass: "sleeper" | "3ac" | "2ac" | "1ac" | "cc" = "sleeper",
 ): PriceBreakdown {
-  // Get base rate for train type
-  const baseRate = PRICING_CONFIG.trainTypeRates[trainType as keyof typeof PRICING_CONFIG.trainTypeRates] || 1.5
+  // Get base rate for train type (defaults to ₹1.25/km if not found)
+  const baseRate = PRICING_CONFIG.trainTypeRates[trainType as keyof typeof PRICING_CONFIG.trainTypeRates] || 1.25
 
   // Calculate base price
   const basePrice = 50 // Minimum booking fee
